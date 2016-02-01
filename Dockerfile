@@ -46,7 +46,7 @@ RUN echo "deb http://mirror.ovh.net/ubuntu lucid main restricted" > /etc/apt/sou
 # Install postgresql, ssh server (access to the container), supervisord (to launch services), 
 #+ tmux (to not open a lot of ssh connections), zsh and vim (to work into the container),
 #+ bzr and python-argparse (for MKDB script), ipython (for a better Python console)
-RUN apt-get install -y openssh-server postgresql-8.4 supervisor screen tmux vim bzr python-argparse ipython
+RUN apt-get install -y openssh-server openssh-client postgresql-8.4 supervisor screen tmux vim bzr python-argparse ipython bash-completion wget htop sudo
 
 # CONFIGURATION
 RUN mkdir -p /var/run/sshd
@@ -55,11 +55,15 @@ RUN echo 'root:unifield' |chpasswd # change default root password
 
 # Add special user docker
 RUN useradd -m docker # create the home directory (-m option)
-RUN echo "docker:docker" | chpasswd # change default docker password
 # Permit docker user to user tmux
 RUN gpasswd -a docker utmp
 # Change docker user default shell
-RUN chsh -s /usr/bin/zsh docker
+#RUN chsh -s /usr/bin/zsh docker
+RUN chsh -s /bin/bash docker
+RUN echo 'docker:docker' |chpasswd # change default docker password
+
+# add docker to the sudoers without password for more convenience
+RUN echo 'docker ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers
 
 # Add OpenERP dependancies
 RUN apt-get install -y python python-psycopg2 python-reportlab python-egenix-mxdatetime python-tz python-pychart python-pydot python-lxml python-libxslt1 python-vobject python-imaging python-profiler python-setuptools python-yaml python-ldap python-cherrypy3 python-mako python-simplejson python-formencode python-pybabel flashplugin-nonfree python-pip
@@ -89,10 +93,21 @@ RUN echo "host all  all    0.0.0.0/0  md5" >> /etc/postgresql/8.4/main/pg_hba.co
 # And add ``listen_addresses`` to ``/etc/postgresql/8.4/main/postgresql.conf``
 RUN echo "listen_addresses='*'" >> /etc/postgresql/8.4/main/postgresql.conf
 
+# Gain root permission
+USER root
+
 # Add configuration file to launch
 ADD supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 # Add tmux configuration for docker user
 ADD tmux.conf /home/docker/.tmux.conf
+
+ADD vimrc /home/docker/.vimrc
+ADD bazaar_auth.conf /home/docker/.bazaar/authentication.conf
+ADD bazaar.conf /home/docker/.bazaar/bazaar.conf
+ADD authorized_keys /home/docker/.ssh/authorized_keys
+RUN chown -R docker:docker /home/docker
+RUN chmod 700 /home/docker/.ssh
+
 
 # Open some ports: 22(SSH), 5432(POSTGRESQL), 8061(OpenERP Web Client)
 EXPOSE 22 5432 8061
@@ -100,8 +115,6 @@ EXPOSE 22 5432 8061
 # Add VOLUMEs to allow backup of config, logs and databases
 VOLUME  ["/etc/postgresql", "/var/log/postgresql", "/var/lib/postgresql"]
 
-# Gain root permission
-USER root
-
 # Launch supervisord
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+CMD ["bash"]
